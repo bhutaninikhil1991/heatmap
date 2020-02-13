@@ -1,11 +1,17 @@
 svg {
-  background-color: whitesmoke;
-  border: 1px solid lightgrey;
+  /* TODO: add border to text area and svg */
+  border: 1px solid gainsboro;
+  border-radius: 10px;
+  background-color: white;
 }
 
 #background {
   fill: white;
 }
+
+.label {
+    font-weight: bold;
+  }
 
 .cell {
   stroke-width: 1px;
@@ -19,11 +25,17 @@ svg {
 
 .axis text {
   fill: dimgrey;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 body {
-  font-family: sans-serif;
-  font-size: 9px;
-  color: dimgrey;
+  /* TODO: set font */
+  font-family: 'Roboto', sans-serif;
+  font-weight: 300;
+  font-size: 11pt;
+  /* TODO: set margin, padding, background */
+  /* see https://developer.mozilla.org/en-US/docs/Web/CSS/color_value */
+  margin: 5px;
+  padding: 0px;
+  background-color: whitesmoke;
 }

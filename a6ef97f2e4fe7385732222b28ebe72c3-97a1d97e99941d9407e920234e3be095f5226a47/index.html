@@ -9,222 +9,388 @@
 
 <body>
 
-<h2>Yearly Region-Wise Air Passenger Heatmap</h2>
+  <h2>Yearly Region-Wise Air Passenger Heatmap</h2>
 
-<svg></svg>
+  <svg id="main-svg"></svg>
+  <svg id="legend-svg" style="position: fixed;"></svg>
 
-<p>Nikhil Bhutani</p>
-<p>Source: https://data.sfgov.org/Transportation/Air-Traffic-Passenger-Statistics/rkru-6vcg/data</p>
+  <p>Nikhil Bhutani</p>
+  <p>Source: <a href="https://data.sfgov.org/Transportation/Air-Traffic-Passenger-Statistics/rkru-6vcg/data">https://data.sfgov.org/Transportation/Air-Traffic-Passenger-Statistics/rkru-6vcg/data</a></p>
 
-<script>
+  <script>
+    // location of data file
+    let csv = 'Air_Traffic_Passenger_Statistics.csv';
 
-// location of data file
-let csv = 'Air_Traffic_Passenger_Statistics.csv';
+    // configuration of svg/plot area
+    let config = {
+      'svg': {},
+      'margin': {},
+      'plot': {}
+    };
 
-// configuration of svg/plot area
-let config = {
-  'svg': {},
-  'margin': {},
-  'plot': {}
-};
+    config.svg.height = 500;
+    config.svg.width = 960;
 
-config.svg.height = 500;
-config.svg.width = 960; // golden ratio
+    config.margin.top = 15;
+    config.margin.right = 15;
+    config.margin.bottom = 40;
+    config.margin.left = 70;
 
-config.margin.top = 10;
-config.margin.right = 10;
-config.margin.bottom = 20;
-config.margin.left = 100;
+    config.plot.x = config.margin.left;
+    config.plot.y = config.margin.top;
+    config.plot.width = config.svg.width - config.margin.left - config.margin.right;
+    config.plot.height = config.svg.height - config.margin.top - config.margin.bottom;
+    // setup svg
+    let svg = d3.select('body').select('#main-svg');
+    svg.attr('width', config.svg.width);
+    svg.attr('height', config.svg.height);
 
-config.plot.x = config.margin.left;
-config.plot.y = config.margin.top;
-config.plot.width = config.svg.width - config.margin.left - config.margin.right;
-config.plot.height = config.svg.height - config.margin.top - config.margin.bottom;
+    // setup plot area
+    let plot = svg.append('g');
+    plot.attr('id', 'plot');
+    plot.attr('transform', translate(config.plot.x, config.plot.y));
 
-// setup svg
-let svg = d3.select('body').select('svg');
-svg.attr('width', config.svg.width);
-svg.attr('height', config.svg.height);
+    // use a rect to illustrate plot area
+    let rect = plot.append('rect');
+    rect.attr('id', 'background');
 
-// setup plot area
-let plot = svg.append('g');
-plot.attr('id', 'plot');
-plot.attr('transform', translate(config.plot.x, config.plot.y));
+    rect.attr('x', 0);
+    rect.attr('y', 0);
+    rect.attr('width', config.plot.width);
+    rect.attr('height', config.plot.height);
 
-// use a rect to illustrate plot area
-let rect = plot.append('rect');
-rect.attr('id', 'background');
+    // scales for data
+    // https://github.com/d3/d3-scale-chromatic
+    let scale = {};
+    scale.x = d3.scaleBand();
+    scale.x.range([0, config.plot.width]);
+    scale.y = d3.scaleBand();
+    scale.y.range([config.plot.height, 0]);
 
-rect.attr('x', 0);
-rect.attr('y', 0);
-rect.attr('width', config.plot.width);
-rect.attr('height', config.plot.height);
+    scale.color = d3.scaleSequential(d3.interpolateViridis);
 
-// scales for data
-// https://github.com/d3/d3-scale-chromatic
-let scale = {};
-scale.x = d3.scaleBand();
-scale.x.range([0, config.plot.width]);
-scale.y = d3.scaleBand();
-scale.y.range([config.plot.height, 0]);
+    // axis for data
+    let axis = {};
+    axis.x = d3.axisBottom(scale.x);
+    axis.y = d3.axisLeft(scale.y);
 
-scale.color = d3.scaleSequential(d3.interpolateViridis);
+    axis.x.tickFormat(dateFormatter);
+    axis.y.tickFormat(regionFormatter);
 
-// TODO
+    // load data
+    d3.csv(csv, convertRow).then(drawHeatmap);
+    // try: parseColumnName('201103');
+    let parseColumnName = d3.timeParse('%Y%m');
 
-// axes for data
-let axis = {};
-axis.x = d3.axisBottom(scale.x);
-axis.y = d3.axisLeft(scale.y);
+    function convertRow(row, index) {
+      let out = {};
+      for (let col in row) {
+        switch (col) {
+          case 'RegionName':
+            out[col] = row[col];
+            break;
 
-axis.x.tickFormat(dateFormatter);
-axis.y.tickFormat(regionFormatter);
-// TODO
+          case 'Passenger_Count':
+            out[col] = parseInt(row[col]);
+            break;
 
-// load data
-d3.csv(csv, convertRow).then(drawHeatmap);
-// try: parseColumnName('201103');
-let parseColumnName = d3.timeParse('%Y%m');
+          case 'Activity_Period':
+            out[col] = parseColumnName(row[col]);
+            break;
 
-function convertRow(row, index) {
-let out = {};
-for(let col in row){
-  switch (col) {
-    case 'RegionName':
-      out[col] = row[col];
-      break;
-
-    case 'Passenger_Count':
-      out[col] = parseInt(row[col]);
-      break;
-
-    case 'Activity_Period':
-        out[col] = parseColumnName(row[col]);
-        break;
-
-    default:
-      break;
-  }
-}
-  return out; // TODO
-}
-
-
-function drawHeatmap(data) {
-  console.log(data);
-  console.log(data[0]);
-
-//grouping and sorting of data
-  let dataGroup = d3.nest()
-    .key(function(d) { return d.RegionName; })
-    .sortKeys(d3.descending)
-    .key(function(d) { return d.Activity_Period; })
-    .rollup(function(v) { return d3.sum(v, function(d) { return d.Passenger_Count; }); })
-    .entries(data)
-    .map(function(group){
-      return{
-        "RegionName" : group.key,
-        "values": group.values.map(function(subgroup){
-          return{
-            "date" : new Date(subgroup.key),
-            "value" : subgroup.value
-          }
-        }).sort(function(a,b){
-          return new Date(a.date)-new Date(b.date);
-        })
+          default:
+            break;
+        }
       }
-    });
-
-    data = dataGroup;
-
-  console.log(data);
-
-  let regions = data.map(row => row['RegionName']);
-  console.log(regions);
-
-  let dates = data[0].values.map(value => value.date);
-  console.log(dates);
-
-  scale.x.domain(dates);
-  scale.y.domain(regions);
-
-  // draw the x and y axis
-  let gx = svg.append("g");
-  gx.attr("id", "x-axis");
-  gx.attr("class", "axis");
-  gx.attr("transform", translate(config.plot.x, config.plot.y + config.plot.height));
-  gx.call(axis.x);
-
-  let gy = svg.append("g");
-  gy.attr("id", "y-axis");
-  gy.attr("class", "axis");
-  gy.attr("transform", translate(config.plot.x, config.plot.y));
-  gy.call(axis.y);
-
-  let values = data.map(d => d.values);
-  let merged = d3.merge(values);
-  let mapped = merged.map(d => d.value);
-
-  let min = d3.min(mapped);
-  let max = d3.max(mapped);
-  let mid = d3.mean(mapped);
-
-  scale.color.domain([min, mid, max]);
-
-  let rows = plot.selectAll("g.cell")
-            .data(data)
-            .enter()
-            .append("g");
-
-    rows.attr("class", "cell");
-    rows.attr("id", d => "Region-" + d.RegionName);
-
-    // shift the entire group to the appropriate y-location
-  rows.attr("transform", function(d) {
-    return translate(0, scale.y(d["RegionName"]));
-  });
-
-  // create one rect per cell within row group
-  let cells = rows.selectAll("rect")
-    .data(d => d.values)
-    .enter()
-    .append("rect");
-
-  cells.attr("x", d => scale.x(d.date));
-  cells.attr("y", 0); // handled by group transform
-  cells.attr("width", scale.x.bandwidth());
-  cells.attr("height", scale.y.bandwidth());
-
-  // here is the color magic!
-  cells.style("fill", d => scale.color(d.value));
-  cells.style("stroke", d => scale.color(d.value));
-}
-
-function dateFormatter(d) {
-  if (d.getMonth() === 6) {
-    return d.getFullYear().toString();
-  }
-}
-
-function regionFormatter(d) {
-  let text = d;
-  let parts = text.split(/[,-]+/);
-
-  if (parts !== null) {
-    text = parts[0];
-
-    if (parts.length > 2) {
-      text = text + "+";
+      return out;
     }
-  }
 
-  return text;
-}
 
-function translate(x, y) {
-  return 'translate(' + x + ',' + y + ')';
-}
+    function drawHeatmap(data) {
+      console.log(data);
+      console.log(data[0]);
 
-</script>
+      //grouping and sorting of data
+      let dataGroup = d3.nest()
+        .key(function(d) {
+          return d.RegionName;
+        })
+        .sortKeys(d3.descending)
+        .key(function(d) {
+          return new Date(d.Activity_Period).getFullYear();
+        })
+        .rollup(function(v) {
+          return d3.sum(v, function(d) {
+            return d.Passenger_Count;
+          });
+        })
+        .entries(data)
+        .map(function(group) {
+          return {
+            "RegionName": group.key,
+            "values": group.values.map(function(subgroup) {
+              return {
+                "date": subgroup.key,
+                "value": subgroup.value
+              }
+            }).sort(function(a, b) {
+              return new Date(a.date) - new Date(b.date);
+            })
+          }
+        });
+
+      data = dataGroup;
+
+      console.log(data);
+
+      let regions = data.map(row => row['RegionName']);
+      console.log(regions);
+
+      let dates = data[0].values.map(value => value.date);
+      console.log(dates);
+
+      scale.x.domain(dates);
+      scale.y.domain(regions);
+
+      // draw the x and y axis
+      let gx = plot.append("g");
+      gx.attr("id", "x-axis");
+      gx.attr("class", "axis");
+      gx.attr("transform", translate(0, config.plot.height));
+      gx.call(axis.x);
+
+      let gy = plot.append("g");
+      gy.attr("id", "y-axis");
+      gy.attr("class", "axis");
+      //gy.attr("transform", translate(config.plot.x, config.plot.y));
+      gy.call(axis.y).selectAll(".tick text")
+        .call(wrap, scale.x.bandwidth());
+
+      gx.append("text")
+        .attr("class", "label")
+        .attr("x", config.plot.width / 2)
+        .attr("y", 35)
+        .attr("text-anchor", "middle")
+        .text("Date");
+
+      gy.append("text")
+        .attr("class", "label")
+        .attr("x", -26)
+        .attr("y", -10)
+        .attr("dy", ".71em")
+        .attr("text-anchor", "middle")
+        .text("Region");
+
+      let values = data.map(d => d.values);
+      let merged = d3.merge(values);
+      let mapped = merged.map(d => d.value).sort(function(a, b) {
+        return a - b;
+      });
+
+      let min = d3.min(mapped);
+      let max = d3.max(mapped);
+      let mid = d3.mean(mapped);
+
+      let colorDomain = d3.extent(mapped, function(d) {
+        return d;
+      });
+
+      scale.color.domain(colorDomain);
+
+      let rows = plot.selectAll("g.cell")
+        .data(data)
+        .enter()
+        .append("g");
+
+      rows.attr("class", "cell");
+      rows.attr("id", d => "Region-" + d.RegionName);
+
+      // shift the entire group to the appropriate y-location
+      rows.attr("transform", function(d) {
+        return translate(0, scale.y(d["RegionName"]));
+      });
+
+      // create one rect per cell within row group
+      let cells = rows.selectAll("rect")
+        .data(d => d.values)
+        .enter()
+        .append("rect");
+
+      cells.attr("x", d => scale.x(d.date));
+      cells.attr("y", 0);
+      cells.attr("width", scale.x.bandwidth());
+      cells.attr("height", scale.y.bandwidth());
+
+      // here is the color magic!
+      cells.style("fill", d => scale.color(d.value));
+      cells.style("stroke", d => scale.color(d.value));
+
+      cells.transition().duration(1000)
+        .style("fill", function(d) {
+          return scale.color(d.value);
+        });
+
+      //legend code begin
+      var legendFullHeight = 80;
+      var legendFullWidth = 200;
+
+      var legendMargin = {
+        top: 10,
+        bottom: 10,
+        left: 10,
+        right: 10
+      };
+
+      var legendWidth = legendFullWidth - legendMargin.left - legendMargin.right;
+      var legendHeight = legendFullHeight - legendMargin.top - legendMargin.bottom;
+
+      var legendSvg = d3.select('#legend-svg')
+        .attr('width', legendFullWidth)
+        .attr('height', legendFullHeight)
+        .append('g')
+        .attr('transform', 'translate(' + legendMargin.left + ',' +
+          legendMargin.top + ')');
+
+      // x1=0, x2=100%, y1=y2 results in a horizontal gradient
+      // it would have been vertical if x1=x2, y1=0, y2=100%
+      // See
+      //      http://www.w3.org/TR/SVG/pservers.html#LinearGradients
+      // for more details and fancier things you can do
+      var gradient = legendSvg.append('defs')
+        .append('linearGradient')
+        .attr('id', 'gradient')
+        .attr("x1", "0%")
+        .attr("x2", "100%")
+        .attr("y1", "0%")
+        .attr("y2", "0%")
+        .attr('spreadMethod', 'pad');
+
+      //virdis colour code
+      var test = ["#440154", "#440256", "#450457", "#450559", "#46075a", "#46085c", "#460a5d", "#460b5e", "#470d60", "#470e61", "#471063", "#471164", "#471365", "#481467", "#481668", "#481769", "#48186a", "#481a6c", "#481b6d",
+        "#481c6e", "#481d6f", "#481f70", "#482071", "#482173", "#482374", "#482475", "#482576", "#482677", "#482878", "#482979", "#472a7a", "#472c7a", "#472d7b", "#472e7c", "#472f7d", "#46307e", "#46327e", "#46337f", "#463480", "#453581",
+        "#453781", "#453882",
+        "#443983", "#443a83", "#443b84", "#433d84", "#433e85", "#423f85", "#424086", "#424186", "#414287", "#414487", "#404588", "#404688", "#3f4788", "#3f4889", "#3e4989", "#3e4a89", "#3e4c8a", "#3d4d8a", "#3d4e8a", "#3c4f8a", "#3c508b",
+        "#3b518b", "#3b528b", "#3a538b", "#3a548c", "#39558c", "#39568c", "#38588c", "#38598c", "#375a8c", "#375b8d", "#365c8d", "#365d8d", "#355e8d", "#355f8d", "#34608d", "#34618d", "#33628d", "#33638d", "#32648e", "#32658e", "#31668e",
+        "#31678e", "#31688e", "#30698e", "#306a8e", "#2f6b8e", "#2f6c8e", "#2e6d8e", "#2e6e8e", "#2e6f8e", "#2d708e", "#2d718e", "#2c718e", "#2c728e", "#2c738e", "#2b748e", "#2b758e", "#2a768e", "#2a778e", "#2a788e", "#29798e", "#297a8e",
+        "#297b8e", "#287c8e", "#287d8e", "#277e8e", "#277f8e", "#27808e", "#26818e", "#26828e", "#26828e", "#25838e", "#25848e", "#25858e", "#24868e", "#24878e", "#23888e", "#23898e", "#238a8d", "#228b8d", "#228c8d", "#228d8d", "#218e8d",
+        "#218f8d", "#21908d", "#21918c", "#20928c", "#20928c", "#20938c", "#1f948c", "#1f958b", "#1f968b", "#1f978b", "#1f988b", "#1f998a", "#1f9a8a", "#1e9b8a", "#1e9c89", "#1e9d89", "#1f9e89", "#1f9f88", "#1fa088", "#1fa188", "#1fa187",
+        "#1fa287", "#20a386", "#20a486", "#21a585", "#21a685", "#22a785", "#22a884", "#23a983", "#24aa83", "#25ab82", "#25ac82", "#26ad81", "#27ad81", "#28ae80", "#29af7f", "#2ab07f", "#2cb17e", "#2db27d", "#2eb37c", "#2fb47c", "#31b57b",
+        "#32b67a", "#34b679", "#35b779", "#37b878", "#38b977", "#3aba76", "#3bbb75", "#3dbc74", "#3fbc73", "#40bd72", "#42be71", "#44bf70", "#46c06f", "#48c16e", "#4ac16d", "#4cc26c", "#4ec36b", "#50c46a", "#52c569", "#54c568", "#56c667",
+        "#58c765", "#5ac864", "#5cc863", "#5ec962", "#60ca60", "#63cb5f", "#65cb5e", "#67cc5c", "#69cd5b", "#6ccd5a", "#6ece58", "#70cf57", "#73d056", "#75d054", "#77d153", "#7ad151", "#7cd250", "#7fd34e", "#81d34d", "#84d44b", "#86d549",
+        "#89d548", "#8bd646", "#8ed645", "#90d743", "#93d741", "#95d840", "#98d83e", "#9bd93c", "#9dd93b", "#a0da39", "#a2da37", "#a5db36", "#a8db34", "#aadc32", "#addc30", "#b0dd2f", "#b2dd2d", "#b5de2b", "#b8de29", "#bade28", "#bddf26",
+        "#c0df25", "#c2df23", "#c5e021", "#c8e020", "#cae11f", "#cde11d", "#d0e11c", "#d2e21b", "#d5e21a", "#d8e219", "#dae319", "#dde318", "#dfe318", "#e2e418", "#e5e419", "#e7e419", "#eae51a", "#ece51b", "#efe51c", "#f1e51d", "#f4e61e",
+        "#f6e620", "#f8e621", "#fbe723", "#fde725"
+      ]
+
+      var pct = linspace(0, 100, test.length).map(function(d) {
+        return Math.round(d) + '%';
+      });
+
+      var colourPct = d3.zip(pct, test);
+
+      colourPct.forEach(function(d) {
+        gradient.append('stop')
+          .attr('offset', d[0])
+          .attr('stop-color', d[1])
+          .attr('stop-opacity', 1);
+      });
+
+
+      legendSvg.append('rect')
+        .attr('x', 0)
+        .attr('y', 20)
+        .attr('width', legendWidth)
+        .attr('height', 20)
+        .style('fill', 'url(#gradient)');
+
+
+      legendSvg.append("text")
+        .attr("class", "legendText")
+        .attr("text-anchor", "start")
+        .attr("x", 0)
+        .attr("y", 60)
+        .attr("dy", 0)
+        .text(min);
+
+      legendSvg.append("text")
+        .attr("class", "legendText")
+        .attr("text-anchor", "end")
+        .attr("x", 180)
+        .attr("y", 60)
+        .attr("dy", 0)
+        .text(max);
+
+      legendSvg.append("text")
+        .attr("x", 0)
+        .attr("y", 0)
+        .attr("dy", ".35em")
+        .text("Sum(Passenger Count)")
+
+      function linspace(start, end, n) {
+        var out = [];
+        var delta = (end - start) / (n - 1);
+
+        var i = 0;
+        while (i < (n - 1)) {
+          out.push(start + (i * delta));
+          i++;
+        }
+
+        out.push(end);
+        return out;
+      }
+
+    }
+
+    function dateFormatter(d) {
+      return d;
+    }
+
+    function regionFormatter(d) {
+      let text = d;
+      let parts = text.split(/[,-]+/);
+
+      if (parts !== null) {
+        text = parts[0];
+
+        if (parts.length > 2) {
+          text = text + "+";
+        }
+      }
+
+      return text;
+    }
+
+    // used for wrapping text
+    function wrap(text, width) {
+      text.each(function() {
+        var text = d3.select(this),
+          words = text.text().split(/\s+/).reverse(),
+          word,
+          line = [],
+          lineNumber = 0,
+          lineHeight = 1.1, // ems
+          x = text.attr("x") ? text.attr("x") : 0,
+          y = text.attr("y"),
+          dy = parseFloat(text.attr("dy")),
+          tspan = text.text(null).append("tspan").attr("x", x).attr("y", y).attr("dy", dy + "em");
+        while (word = words.pop()) {
+          line.push(word);
+          tspan.text(line.join(" "));
+          if (tspan.node().getComputedTextLength() > width) {
+            line.pop();
+            tspan.text(line.join(" "));
+            line = [word];
+            tspan = text.append("tspan").attr("x", x).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
+          }
+        }
+      });
+    }
+
+    function translate(x, y) {
+      return 'translate(' + x + ',' + y + ')';
+    }
+  </script>
 </body>
+
 </html>
